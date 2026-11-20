@@ -4,6 +4,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useSyncExternalStore } from 'react';
 
+import { AchievementWatcher } from '@/components/achievement-watcher';
+import { SyncManager } from '@/components/sync-manager';
 import { Colors } from '@/constants/theme';
 import { useResolvedScheme } from '@/hooks/use-theme';
 import { useProgress } from '@/store/progress';
@@ -55,14 +57,23 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider value={navTheme}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <SyncManager />
         <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="track/[trackId]" options={{ title: '' }} />
           <Stack.Screen name="unit/[unitId]" options={{ title: '' }} />
-          <Stack.Screen name="lesson/[lessonId]" options={{ title: 'Lesson' }} />
+          <Stack.Screen name="quiz/[unitId]" options={{ title: 'Quiz' }} />
+          <Stack.Screen name="exercise/[id]" options={{ title: 'Exercise' }} />
+          <Stack.Screen name="debug/[id]" options={{ title: 'Debugging' }} />
+          <Stack.Screen name="game/[id]" options={{ title: '' }} />
+          <Stack.Screen name="account" options={{ title: 'Account & sync' }} />
+          <Stack.Screen name="tutor" options={{ title: 'AI tutor' }} />
+          <Stack.Screen name="project/[id]" options={{ title: 'Project' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+          <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
         </Stack>
+        <AchievementWatcher />
       </ThemeProvider>
     </QueryClientProvider>
   );

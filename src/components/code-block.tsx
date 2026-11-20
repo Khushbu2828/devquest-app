@@ -8,7 +8,7 @@ import { useSettings } from '@/store/settings';
 
 /**
  * Read-only code display with line numbers. The interactive editor (CodeMirror
- * in a WebView) arrives in Phase 3; this is used for lessons and questions.
+ * in a WebView) arrives in Phase 3; this is used for topic notes and questions.
  */
 export function CodeBlock({ code, caption }: { code: string; caption?: string }) {
   const theme = useTheme();

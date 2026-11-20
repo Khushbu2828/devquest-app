@@ -5,6 +5,7 @@ import { CodeBlock } from '@/components/code-block';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Card, Chip, Row, Screen, Section } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
+import { signOut } from '@/lib/sync';
 import { useProgress } from '@/store/progress';
 import { useSettings, type ThemePreference } from '@/store/settings';
 
@@ -20,16 +21,18 @@ export default function SettingsScreen() {
   const resetProgress = useProgress((s) => s.resetProgress);
 
   const confirmReset = () => {
-    const doReset = () => {
+    const doReset = async () => {
+      // Sign out first, or the next sync would download the erased progress again.
+      await signOut();
       resetProgress();
       router.replace('/onboarding');
     };
     if (Platform.OS === 'web') {
       // Alert with buttons is not supported on web.
-      if (globalThis.confirm?.('Erase all progress? This cannot be undone.')) doReset();
+      if (globalThis.confirm?.('Erase all progress on this device? This cannot be undone. If you use sync, you will be signed out and your cloud copy is kept.')) doReset();
       return;
     }
-    Alert.alert('Erase all progress?', 'This cannot be undone.', [
+    Alert.alert('Erase all progress on this device?', 'This cannot be undone. If you use sync, you will be signed out and your cloud copy is kept.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Erase', style: 'destructive', onPress: doReset },
     ]);

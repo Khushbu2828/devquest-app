@@ -1,14 +1,16 @@
 import { router } from 'expo-router';
+import { useMemo } from 'react';
 
 import { ThemedText } from '@/components/themed-text';
 import { ProgressBar, PressableCard, Screen } from '@/components/ui';
 import { TrackColors } from '@/constants/theme';
 import { tracks, unitsForTrack } from '@/content';
-import { trackLessonProgress } from '@/lib/progress';
+import { masteredIds, trackMastery } from '@/lib/progress';
 import { useProgress } from '@/store/progress';
 
 export default function LearnScreen() {
-  const completed = useProgress((s) => s.completedLessons);
+  const attempts = useProgress((s) => s.attempts);
+  const mastered = useMemo(() => masteredIds(attempts), [attempts]);
 
   return (
     <Screen>
@@ -20,13 +22,13 @@ export default function LearnScreen() {
       </ThemedText>
 
       {tracks.map((t, i) => {
-        const p = trackLessonProgress(t.id, completed);
+        const p = trackMastery(t.id, mastered);
         const units = unitsForTrack(t.id);
         return (
           <PressableCard
             key={t.id}
             accent={TrackColors[t.id]}
-            accessibilityLabel={`Track ${i + 1}: ${t.title}. ${units.length} units. ${p.done} of ${p.total} lessons done.`}
+            accessibilityLabel={`Track ${i + 1}: ${t.title}. ${units.length} units. ${p.done} of ${p.total} questions mastered.`}
             onPress={() => router.push({ pathname: '/track/[trackId]', params: { trackId: t.id } })}>
             <ThemedText type="label" color="textSecondary">
               Track {i + 1} · {units.length} units

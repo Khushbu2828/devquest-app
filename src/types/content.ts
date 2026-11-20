@@ -32,18 +32,21 @@ export interface Unit {
   topics: string[];
 }
 
-export type LessonBlock =
+export type NoteBlock =
   | { kind: 'text'; text: string }
   | { kind: 'code'; code: string; language: CodeLanguage; caption?: string }
   | { kind: 'tip'; text: string };
 
-export interface Lesson {
-  id: string;
-  unitId: string;
-  order: number;
+/**
+ * A short explainer for one topic. Learners don't read these up front: the quiz
+ * opens the matching note in a "Learn this" section after a wrong answer.
+ */
+export interface TopicNote {
+  track: TrackId;
+  /** Matches `Unit.topics` and `Question.topic`. */
+  topic: string;
   title: string;
-  minutes: number;
-  blocks: LessonBlock[];
+  blocks: NoteBlock[];
 }
 
 // ---------------------------------------------------------------- Questions
@@ -210,7 +213,7 @@ export interface BuildProject {
 export interface TrackContent {
   track: Track;
   units: Unit[];
-  lessons: Lesson[];
+  notes: TopicNote[];
   questions: Question[];
   exercises: CodingExercise[];
   debugChallenges: DebugChallenge[];

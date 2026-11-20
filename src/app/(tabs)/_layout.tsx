@@ -37,6 +37,10 @@ export default function TabLayout() {
         options={{ title: 'Learn', tabBarIcon: (p: TabIconProps) => <TabIcon name="map" {...p} /> }}
       />
       <Tabs.Screen
+        name="play"
+        options={{ title: 'Play', tabBarIcon: (p: TabIconProps) => <TabIcon name="game-controller" {...p} /> }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',

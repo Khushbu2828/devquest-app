@@ -7,7 +7,9 @@
     "noEmit": true
   },
   "include": [
-    "./**/*.ts"
+    "./**/*.ts",
+    "../server/**/*.ts",
+    "../tests/**/*.ts"
   ],
   "exclude": []
 }

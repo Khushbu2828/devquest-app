@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useState, type ReactNode } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -198,7 +199,50 @@ export function Section({ title, children }: { title: string; children: ReactNod
   );
 }
 
+/** A section that expands and collapses when its header is tapped. */
+export function Accordion({
+  title,
+  icon,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  icon?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View style={[styles.accordion, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={title}
+        onPress={() => setOpen((o) => !o)}
+        style={({ pressed }) => [styles.accordionHeader, pressed && { opacity: 0.7 }]}>
+        <ThemedText type="heading" style={{ flex: 1 }}>
+          {icon ? `${icon} ` : ''}
+          {title}
+        </ThemedText>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={theme.textSecondary} />
+      </Pressable>
+      {open && <View style={styles.accordionBody}>{children}</View>}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  accordion: { borderWidth: 1, borderRadius: Radius.md, overflow: 'hidden' },
+  accordionHeader: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  accordionBody: { paddingHorizontal: Spacing.three, paddingBottom: Spacing.three, gap: Spacing.three },
   screen: { flex: 1 },
   scroll: { flexGrow: 1, alignItems: 'center', paddingBottom: Spacing.five },
   content: {

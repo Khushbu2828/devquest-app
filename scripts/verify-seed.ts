@@ -8,202 +8,43 @@
  *  - debug challenges: fixed code passes, buggy code fails (when tests are provided)
  *  - TypeScript: solutions type-check under `strict`; `add_types` starters must not
  *
- * The same checks will gate AI-generated questions in Phase 6.
+ * The per-question checks live in `server/checks/` and also gate AI-generated questions.
  */
-import path from 'node:path';
-import { createRequire } from 'node:module';
-import util from 'node:util';
-import vm from 'node:vm';
-
-import ts from 'typescript';
-
+import { checkQuestion } from '../server/checks/question';
+import { runLikeAppForLogs, runTests, runTestsLikeApp, syntaxErrors, typeErrors } from '../server/checks/sandbox';
+import { previews, routerScript, todoScript } from '../src/content/previews';
 import { allContent } from '../src/content';
-import { EXPECT_PRELUDE, buildTestProgram, formatLogLine, type TestResult } from '../src/lib/runner/harness';
 import type { CodeLanguage, CodeTest, Question, TrackContent } from '../src/types/content';
-
-const ROOT = path.resolve(__dirname, '..');
-const requireFromRoot = createRequire(path.join(ROOT, 'package.json'));
-const ALLOWED_MODULES = new Set(['react', 'react/jsx-runtime', 'react-dom/server']);
 
 const errors: string[] = [];
 const fail = (where: string, msg: string) => errors.push(`${where}: ${msg}`);
 
-// ------------------------------------------------------------------ sandbox
-
-function transpile(source: string, language: CodeLanguage): string {
-  if (language === 'js') return source;
-  return ts.transpileModule(source, {
-    compilerOptions: {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.CommonJS,
-      jsx: ts.JsxEmit.ReactJSX,
-      esModuleInterop: true,
-    },
-    fileName: `snippet.${language}`,
-  }).outputText;
-}
-
-function createSandbox(logs: string[]) {
-  const reactServer = requireFromRoot('react-dom/server') as typeof import('react-dom/server');
-  const context = vm.createContext({
-    console: {
-      log: (...args: unknown[]) => logs.push(formatLogLine(args, (v) => util.inspect(v))),
-      error: () => {},
-      warn: () => {},
-    },
-    setTimeout,
-    clearTimeout,
-    Response,
-    Request,
-    Headers,
-    URL,
-    structuredClone,
-    exports: {},
-    module: { exports: {} },
-    require: (id: string) => {
-      if (!ALLOWED_MODULES.has(id)) throw new Error(`Module "${id}" is not available in the sandbox`);
-      return requireFromRoot(id);
-    },
-    render: (element: unknown) => reactServer.renderToStaticMarkup(element as never),
-  });
-  return context;
-}
-
-const settle = () => new Promise((r) => setTimeout(r, 30));
-
-async function runForOutput(source: string, language: CodeLanguage): Promise<string> {
-  const logs: string[] = [];
-  const context = createSandbox(logs);
-  vm.runInContext(transpile(source, language), context, { timeout: 1000 });
-  await settle();
-  return logs.join('\n');
-}
-
-async function runTests(source: string, language: CodeLanguage, tests: CodeTest[]): Promise<TestResult[]> {
-  const context = createSandbox([]);
-  vm.runInContext(EXPECT_PRELUDE, context);
-  try {
-    vm.runInContext(transpile(buildTestProgram(source, tests), language), context, { timeout: 1000 });
-  } catch (e) {
-    return tests.map((t) => ({ name: t.name, passed: false, error: `Program error: ${(e as Error).message}` }));
-  }
-  const fns = (context as { __tests: (() => Promise<void>)[] }).__tests;
-  const results: TestResult[] = [];
-  for (let i = 0; i < tests.length; i++) {
-    try {
-      await Promise.race([
-        fns[i](),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out')), 1000)),
-      ]);
-      results.push({ name: tests[i].name, passed: true });
-    } catch (e) {
-      results.push({ name: tests[i].name, passed: false, error: (e as Error).message });
-    }
-  }
-  return results;
-}
-
-// ------------------------------------------------------------------ type-check
-
-function typeErrors(source: string, language: CodeLanguage): string[] {
-  if (language !== 'ts' && language !== 'tsx') return [];
-  const fileName = path.join(ROOT, `__verify__.${language}`);
-  const options: ts.CompilerOptions = {
-    strict: true,
-    noEmit: true,
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    jsx: ts.JsxEmit.ReactJSX,
-    lib: ['lib.es2022.d.ts', 'lib.dom.d.ts'],
-    types: [],
-    skipLibCheck: true,
-    // Snippets are standalone scripts; treat them as modules so names don't clash with lib globals.
-    moduleDetection: ts.ModuleDetectionKind.Force,
-  };
-  const host = ts.createCompilerHost(options);
-  const original = { getSourceFile: host.getSourceFile, fileExists: host.fileExists, readFile: host.readFile };
-  host.getSourceFile = (name, lang, ...rest) =>
-    path.resolve(name) === fileName
-      ? ts.createSourceFile(name, source, lang)
-      : original.getSourceFile(name, lang, ...rest);
-  host.fileExists = (name) => path.resolve(name) === fileName || original.fileExists(name);
-  host.readFile = (name) => (path.resolve(name) === fileName ? source : original.readFile(name));
-  const program = ts.createProgram([fileName], options, host);
-  return ts
-    .getPreEmitDiagnostics(program)
-    .map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
-}
-
-function syntaxErrors(source: string, language: CodeLanguage): string[] {
-  const out = ts.transpileModule(source, {
-    reportDiagnostics: true,
-    compilerOptions: { jsx: ts.JsxEmit.ReactJSX, allowJs: true },
-    fileName: `snippet.${language === 'js' ? 'jsx' : language}`,
-  });
-  return (out.diagnostics ?? []).map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
-}
-
-// ------------------------------------------------------------------ checks
-
 const lineCount = (s: string) => s.split('\n').length;
 
-async function checkQuestion(q: Question, content: TrackContent) {
-  const where = q.id;
-  const unit = content.units.find((u) => u.id === q.unitId);
-  if (!unit) fail(where, `unknown unit "${q.unitId}"`);
-  else if (!unit.topics.includes(q.topic)) fail(where, `topic "${q.topic}" is not listed on unit ${unit.id}`);
-  if (!q.explanation.trim()) fail(where, 'missing explanation');
-  if (q.hints.length === 0) fail(where, 'needs at least one hint');
+async function checkSeedQuestion(q: Question, content: TrackContent) {
+  for (const problem of await checkQuestion(q, content.units.find((u) => u.id === q.unitId))) fail(q.id, problem);
+}
 
-  switch (q.type) {
-    case 'mcq':
-    case 'output': {
-      if (q.answer < 0 || q.answer >= q.options.length) fail(where, 'answer index out of range');
-      if (new Set(q.options).size !== q.options.length) fail(where, 'duplicate options');
-      if (q.options.length < 3) fail(where, 'needs at least 3 options');
-      if (q.type === 'output') {
-        try {
-          const actual = await runForOutput(q.code, q.language);
-          if (actual !== q.options[q.answer]) {
-            fail(where, `marked answer ${JSON.stringify(q.options[q.answer])} but code logs ${JSON.stringify(actual)}`);
-          }
-        } catch (e) {
-          fail(where, `code threw: ${(e as Error).message}`);
-        }
-      }
-      break;
+/** The phone (sucrase + mini React) must give the same pass/fail per test as Node + real React. */
+async function expectSameInApp(where: string, source: string, language: CodeLanguage, tests: CodeTest[]) {
+  const node = await runTests(source, language, tests);
+  const app = await runTestsLikeApp(source, language, tests);
+  node.forEach((r, i) => {
+    if (r.passed !== app[i]?.passed) {
+      fail(where, `test "${r.name}" ${r.passed ? 'passes' : 'fails'} in Node but ${app[i]?.passed ? 'passes' : 'fails'} in the app sandbox${app[i]?.error ? `: ${app[i].error}` : ''}`);
     }
-    case 'multi':
-      if (q.answers.length === 0) fail(where, 'no correct answers');
-      if (q.answers.some((a) => a < 0 || a >= q.options.length)) fail(where, 'answer index out of range');
-      break;
-    case 'fill_blank':
-      if (q.code.split('___').length !== 2) fail(where, 'code must contain exactly one ___');
-      break;
-    case 'order':
-      if (q.lines.length < 3) fail(where, 'needs at least 3 lines');
-      if (new Set(q.lines).size !== q.lines.length) fail(where, 'duplicate lines make the order ambiguous');
-      break;
-    case 'match':
-      if (q.pairs.length < 3) fail(where, 'needs at least 3 pairs');
-      if (new Set(q.pairs.map((p) => p.right)).size !== q.pairs.length) fail(where, 'duplicate right-hand values');
-      break;
-    case 'bug_find':
-      if (q.bugLine < 1 || q.bugLine > lineCount(q.code)) fail(where, 'bugLine is outside the code');
-      break;
-    case 'true_false':
-      break;
-  }
+  });
 }
 
 async function expectPassAll(where: string, source: string, language: CodeLanguage, tests: CodeTest[]) {
+  await expectSameInApp(where, source, language, tests);
   for (const r of await runTests(source, language, tests)) {
     if (!r.passed) fail(where, `test "${r.name}" should pass but failed: ${r.error}`);
   }
 }
 
 async function expectSomeFail(where: string, source: string, language: CodeLanguage, tests: CodeTest[]) {
+  await expectSameInApp(where, source, language, tests);
   const results = await runTests(source, language, tests);
   if (results.every((r) => r.passed)) fail(where, 'every test passes before the learner changes anything');
 }
@@ -222,22 +63,27 @@ async function checkTrack(content: TrackContent) {
   if (content.debugChallenges.length < 3) fail(t, 'needs 3 debug challenges');
   if (new Set(content.questions.map((q) => q.type)).size < 5) fail(t, 'questions should use at least 5 types');
 
-  for (const l of content.lessons) {
-    if (!unitIds.has(l.unitId)) fail(l.id, `unknown unit "${l.unitId}"`);
-    for (const b of l.blocks) {
+  const noteTopics = new Set<string>();
+  for (const n of content.notes) {
+    if (n.track !== t) fail(n.topic, 'note track mismatch');
+    if (noteTopics.has(n.topic)) fail(`${t}:${n.topic}`, 'two notes for the same topic');
+    noteTopics.add(n.topic);
+    if (!content.units.some((u) => u.topics.includes(n.topic))) fail(`${t}:${n.topic}`, 'note for a topic no unit covers');
+    for (const b of n.blocks) {
       if (b.kind === 'code') {
         const errs = syntaxErrors(b.code, b.language);
-        if (errs.length) fail(l.id, `syntax error in code block: ${errs[0]}`);
+        if (errs.length) fail(`${t}:${n.topic} note`, `syntax error in code block: ${errs[0]}`);
       }
     }
   }
+  // Every topic a learner can get wrong needs a "Learn this" note.
   for (const u of content.units) {
-    if (!content.lessons.some((l) => l.unitId === u.id)) fail(u.id, 'unit has no lessons');
+    for (const topic of u.topics) if (!noteTopics.has(topic)) fail(u.id, `no note for topic "${topic}"`);
   }
 
   for (const q of content.questions) {
     if (q.track !== t) fail(q.id, 'track mismatch');
-    await checkQuestion(q, content);
+    await checkSeedQuestion(q, content);
   }
 
   for (const ex of content.exercises) {
@@ -277,10 +123,46 @@ async function checkTrack(content: TrackContent) {
   }
 }
 
+/** Each project's live preview must work with the model solution, and fail gracefully on the first starter. */
+async function checkPreview(content: TrackContent) {
+  const p = content.project;
+  const preview = previews[p.id];
+  if (!preview) return fail(p.id, 'project has no live preview');
+  const final = p.checkpoints[p.checkpoints.length - 1].solution;
+  const starter = p.checkpoints[0].starterCode;
+  const run = (code: string, script: string) => runLikeAppForLogs(`${code}\n;\n${script}`, p.language);
+
+  let script: string;
+  let expectOk: (logs: string[]) => string | null;
+  if (preview.kind === 'form') {
+    script = preview.script(Object.fromEntries(preview.fields.map((f) => [f.name, f.initial])));
+    expectOk = (logs) => (logs.length && !logs.some((l) => /error/i.test(l)) ? null : `form preview logged ${JSON.stringify(logs)}`);
+  } else if (preview.kind === 'todo') {
+    script = todoScript([{ type: 'add', text: 'a' }, { type: 'add', text: 'b' }, { type: 'toggle', id: 1 }]);
+    expectOk = (logs) => {
+      const todos = JSON.parse(logs[0] ?? '[]');
+      return todos.length === 2 && todos[0].done && (logs[1] ?? '').startsWith('<section>') ? null : `todo preview logged ${JSON.stringify(logs)}`;
+    };
+  } else {
+    script = routerScript(preview.files, '/blog/hello');
+    expectOk = (logs) => {
+      const out = JSON.parse(logs[logs.length - 1] ?? '{}');
+      return out.resolved?.file === 'app/blog/[slug]/page.tsx' ? null : `router preview logged ${JSON.stringify(logs)}`;
+    };
+  }
+  const good = await run(final, script);
+  if (good.error) fail(`${p.id} preview`, `threw with the model solution: ${good.error}`);
+  else {
+    const problem = expectOk(good.logs);
+    if (problem) fail(`${p.id} preview`, problem);
+  }
+  const early = await run(starter, script);
+  if (early.error) fail(`${p.id} preview`, `threw with the first starter code: ${early.error}`);
+}
+
 async function main() {
   const ids = allContent.flatMap((c) => [
     ...c.units.map((x) => x.id),
-    ...c.lessons.map((x) => x.id),
     ...c.questions.map((x) => x.id),
     ...c.exercises.map((x) => x.id),
     ...c.debugChallenges.map((x) => x.id),
@@ -292,7 +174,10 @@ async function main() {
     seen.add(id);
   }
 
-  for (const content of allContent) await checkTrack(content);
+  for (const content of allContent) {
+    await checkTrack(content);
+    await checkPreview(content);
+  }
 
   const totals = allContent.map(
     (c) =>

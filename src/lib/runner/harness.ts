@@ -54,7 +54,15 @@ var expect = function (actual) {
     not[name] = function () {
       var args = arguments, passed = true;
       try { matchers[name].apply(null, args); } catch (e) { passed = false; }
-      if (passed) fail('Expected not.' + name + ' to fail');
+      if (!passed) return;
+      if (name === 'toThrow') {
+        var thrown;
+        try { actual(); } catch (e) { thrown = e; }
+        fail('Expected no error, but it threw: ' + (thrown && thrown.message ? thrown.message : String(thrown)));
+      }
+      var words = name.replace(/^to/, '').replace(/[A-Z]/g, function (c) { return ' ' + c.toLowerCase(); }).trim();
+      fail('Expected ' + __show(actual) + ' not to ' + words +
+        (args.length ? ' ' + __show(args[0]) : ''));
     };
   });
   matchers.not = not;

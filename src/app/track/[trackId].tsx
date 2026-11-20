@@ -1,19 +1,23 @@
 import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { RichText } from '@/components/rich-text';
 import { ThemedText } from '@/components/themed-text';
 import { LevelBadge, PressableCard, Row, Screen } from '@/components/ui';
 import { Radius, Spacing, TrackColors } from '@/constants/theme';
-import { getTrackContent, lessonsForUnit, unitsForTrack } from '@/content';
+import { getTrackContent, unitsForTrack } from '@/content';
 import { useTheme } from '@/hooks/use-theme';
+import { checkpointRewardId, masteredIds, unitMastery } from '@/lib/progress';
 import { useProgress } from '@/store/progress';
 
 /** Track map: units laid out as a vertical path, each node showing completion. */
 export default function TrackScreen() {
   const { trackId } = useLocalSearchParams<{ trackId: string }>();
   const theme = useTheme();
-  const completed = useProgress((s) => s.completedLessons);
+  const attempts = useProgress((s) => s.attempts);
+  const rewards = useProgress((s) => s.rewards);
+  const mastered = useMemo(() => masteredIds(attempts), [attempts]);
   const content = getTrackContent(trackId);
 
   if (!content) {
@@ -26,6 +30,7 @@ export default function TrackScreen() {
 
   const color = TrackColors[content.track.id];
   const units = unitsForTrack(content.track.id);
+  const projectDone = content.project.checkpoints.filter((c) => rewards.some((r) => r.id === checkpointRewardId(content.project, c.id))).length;
 
   return (
     <Screen edges={[]}>
@@ -34,9 +39,8 @@ export default function TrackScreen() {
 
       <View>
         {units.map((unit, i) => {
-          const lessons = lessonsForUnit(unit.id);
-          const done = lessons.filter((l) => completed[l.id]).length;
-          const finished = lessons.length > 0 && done === lessons.length;
+          const { done, total } = unitMastery(unit.id, mastered);
+          const finished = total > 0 && done === total;
           return (
             <View key={unit.id} style={styles.nodeRow}>
               <View style={styles.rail}>
@@ -53,12 +57,12 @@ export default function TrackScreen() {
               </View>
               <PressableCard
                 style={styles.card}
-                accessibilityLabel={`Unit ${i + 1}: ${unit.title}. ${unit.level}. ${done} of ${lessons.length} lessons done${finished ? ', complete' : ''}.`}
+                accessibilityLabel={`Unit ${i + 1}: ${unit.title}. ${unit.level}. ${done} of ${total} questions mastered${finished ? ', complete' : ''}.`}
                 onPress={() => router.push({ pathname: '/unit/[unitId]', params: { unitId: unit.id } })}>
                 <Row style={{ justifyContent: 'space-between' }}>
                   <LevelBadge level={unit.level} />
                   <ThemedText type="small" color="textSecondary">
-                    {done}/{lessons.length}
+                    {done}/{total}
                   </ThemedText>
                 </Row>
                 <ThemedText type="heading">{unit.title}</ThemedText>
@@ -70,6 +74,24 @@ export default function TrackScreen() {
           );
         })}
       </View>
+
+      <PressableCard
+        accent={color}
+        accessibilityLabel={`Build project: ${content.project.title}. ${projectDone} of ${content.project.checkpoints.length} steps done.`}
+        onPress={() => router.push({ pathname: '/project/[id]', params: { id: content.project.id } })}>
+        <Row style={{ justifyContent: 'space-between' }}>
+          <ThemedText type="label" color="textSecondary">
+            🛠 Build project
+          </ThemedText>
+          <ThemedText type="small" color="textSecondary">
+            {projectDone}/{content.project.checkpoints.length} steps
+          </ThemedText>
+        </Row>
+        <ThemedText type="heading">{content.project.title}</ThemedText>
+        <ThemedText type="small" color="textSecondary">
+          {content.project.description}
+        </ThemedText>
+      </PressableCard>
     </Screen>
   );
 }

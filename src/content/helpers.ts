@@ -1,9 +1,13 @@
-import type { Question, TrackId } from '@/types/content';
+import type { Question, TopicNote, TrackId } from '@/types/content';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 /** A seed question as authored: track, source and status are filled in by `seedQuestions`. */
 export type SeedQuestion = DistributiveOmit<Question, 'track' | 'source' | 'status'>;
+
+export function notesFor(track: TrackId, list: Omit<TopicNote, 'track'>[]): TopicNote[] {
+  return list.map((n) => ({ ...n, track }));
+}
 
 export function seedQuestions(track: TrackId, list: SeedQuestion[]): Question[] {
   return list.map((q) => ({ ...q, track, source: 'seed', status: 'approved' }) as Question);

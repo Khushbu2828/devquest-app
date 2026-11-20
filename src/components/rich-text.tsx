@@ -2,7 +2,7 @@ import { ThemedText, type ThemedTextProps } from '@/components/themed-text';
 import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-/** Renders text with `inline code` spans, as used throughout lesson and question copy. */
+/** Renders text with `inline code` spans, as used throughout notes and question copy. */
 export function RichText({ children, ...props }: Omit<ThemedTextProps, 'children'> & { children: string }) {
   const theme = useTheme();
   const parts = children.split(/(`[^`]+`)/g);

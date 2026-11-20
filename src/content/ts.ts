@@ -1,4 +1,5 @@
 import { code, seedQuestions } from '@/content/helpers';
+import { tsNotes } from '@/content/notes/ts';
 import type { TrackContent } from '@/types/content';
 
 const formStep1 = code`
@@ -88,126 +89,7 @@ export const tsContent: TrackContent = {
     },
   ],
 
-  lessons: [
-    {
-      id: 'ts-basics-l1',
-      unitId: 'ts-basics',
-      order: 1,
-      title: 'Annotations and inference',
-      minutes: 5,
-      blocks: [
-        {
-          kind: 'text',
-          text: 'TypeScript infers most types for you. Add annotations where inference cannot help: function parameters, and values you want to constrain.',
-        },
-        {
-          kind: 'code',
-          language: 'ts',
-          code: code`
-            let count = 0;                 // inferred: number
-            const mode = 'dark';           // inferred: "dark" (a literal type)
-
-            function greet(name: string): string {
-              return 'Hi ' + name;
-            }
-
-            let id: string | number = 42;  // a union type
-            id = 'abc';
-          `,
-        },
-        {
-          kind: 'tip',
-          text: 'Prefer `unknown` over `any` for values you have not checked yet. `unknown` forces you to narrow before using it.',
-        },
-      ],
-    },
-    {
-      id: 'ts-objects-l1',
-      unitId: 'ts-objects',
-      order: 1,
-      title: 'Describing object shapes',
-      minutes: 6,
-      blocks: [
-        {
-          kind: 'code',
-          language: 'ts',
-          code: code`
-            interface User {
-              id: number;
-              name: string;
-              email?: string;            // optional: string | undefined
-              readonly createdAt: Date;  // cannot be reassigned
-            }
-
-            type Point = { x: number; y: number };
-          `,
-        },
-        {
-          kind: 'text',
-          text: 'Interfaces and type aliases are mostly interchangeable for objects. Interfaces can be extended and merged; type aliases can also name unions, tuples and other types.',
-        },
-      ],
-    },
-    {
-      id: 'ts-generics-l1',
-      unitId: 'ts-generics',
-      order: 1,
-      title: 'Generics keep types connected',
-      minutes: 7,
-      blocks: [
-        {
-          kind: 'text',
-          text: 'A generic is a type parameter. It lets a function work with many types while still telling the caller exactly which type comes back.',
-        },
-        {
-          kind: 'code',
-          language: 'ts',
-          code: code`
-            function first<T>(items: T[]): T | undefined {
-              return items[0];
-            }
-            const n = first([1, 2, 3]);    // number | undefined
-
-            function getProp<T, K extends keyof T>(obj: T, key: K): T[K] {
-              return obj[key];
-            }
-            getProp({ name: 'Ada' }, 'name'); // string
-          `,
-        },
-      ],
-    },
-    {
-      id: 'ts-advanced-l1',
-      unitId: 'ts-advanced',
-      order: 1,
-      title: 'Narrowing and discriminated unions',
-      minutes: 8,
-      blocks: [
-        {
-          kind: 'code',
-          language: 'ts',
-          code: code`
-            type Result =
-              | { status: 'ok'; data: string[] }
-              | { status: 'error'; message: string };
-
-            function render(r: Result): string {
-              switch (r.status) {
-                case 'ok':
-                  return r.data.join(', ');   // r is the 'ok' variant here
-                case 'error':
-                  return 'Error: ' + r.message;
-              }
-            }
-          `,
-        },
-        {
-          kind: 'text',
-          text: 'Utility types transform existing types: `Partial<T>`, `Required<T>`, `Pick<T, K>`, `Omit<T, K>`, `Record<K, V>` and `Readonly<T>`.',
-        },
-      ],
-    },
-  ],
+  notes: tsNotes,
 
   questions: seedQuestions('ts', [
     {
